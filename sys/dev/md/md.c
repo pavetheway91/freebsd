@@ -106,6 +106,9 @@
 
 #include <machine/bus.h>
 
+#include <sys/lz4.h>
+#include <sys/zlib.h>
+
 #define MD_MODVER 1
 
 #define MD_SHUTDOWN	0x10000		/* Tell worker thread to terminate. */
@@ -395,6 +398,7 @@ s_write(struct indir *ip, off_t offset, uintptr_t ptr)
 	struct indir *cip, *lip[10];
 	int idx, li;
 	uintptr_t up;
+	z_stream strm;
 
 	if (md_debug > 1)
 		printf("s_write(%jd, %p)\n", (intmax_t)offset, (void *)ptr);
