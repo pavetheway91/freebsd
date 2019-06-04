@@ -106,7 +106,7 @@
 
 #include <machine/bus.h>
 
-#include <sys/lz4.h>
+//#include <sys/lz4.h>
 #include <sys/zlib.h>
 
 #define MD_MODVER 1
@@ -239,6 +239,7 @@ static int nshift;
 
 static uma_zone_t md_pbuf_zone;
 
+// a tree?
 struct indir {
 	uintptr_t	*array;
 	u_int		total;
@@ -391,7 +392,8 @@ s_read(struct indir *ip, off_t offset)
 /*
  * Write a given sector, prune the tree if the value is 0
  */
-
+// called in three palces in mdstart_malloc and once in mdcreate_malloc
+// if memory gets reserved
 static int
 s_write(struct indir *ip, off_t offset, uintptr_t ptr)
 {
@@ -450,7 +452,7 @@ s_write(struct indir *ip, off_t offset, uintptr_t ptr)
 	return (0);
 }
 
-
+// not called directly here
 static int
 g_md_access(struct g_provider *pp, int r, int w, int e)
 {
@@ -498,7 +500,7 @@ g_md_start(struct bio *bp)
 #define	MD_MALLOC_MOVE_WRITE	4
 #define	MD_MALLOC_MOVE_CMP	5
 
-static int
+static int// _ma?
 md_malloc_move_ma(vm_page_t **mp, int *ma_offs, unsigned sectorsize,
     void *ptr, u_char fill, int op)
 {
@@ -722,14 +724,14 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 			}
 			osp = 0;
 		} else if (bp->bio_cmd == BIO_WRITE) {
-			if (sc->flags & MD_COMPRESS) {
+			if (sc->flags & MD_COMPRESS) { // what is happening here?
 				if (notmapped) {
 					error1 = md_malloc_move_ma(&m, &ma_offs,
 					    sc->sectorsize, &uc, 0,
 					    MD_MALLOC_MOVE_CMP);
 					i = error1 == 0 ? sc->sectorsize : 0;
 				} else if (vlist != NULL) {
-					error1 = md_malloc_move_vlist(&vlist,
+					error1 = md_malloc_move_vlist(&vlist, // vlist?
 					    &ma_offs, sc->sectorsize, &uc, 0,
 					    MD_MALLOC_MOVE_CMP);
 					i = error1 == 0 ? sc->sectorsize : 0;
@@ -1347,6 +1349,9 @@ mdinit(struct md_s *sc)
 	    DEVSTAT_ALL_SUPPORTED, DEVSTAT_TYPE_DIRECT, DEVSTAT_PRIORITY_MAX);
 }
 
+/**
+ * initializes the disk and validates options
+ */
 static int
 mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 {
