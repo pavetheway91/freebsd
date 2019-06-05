@@ -271,7 +271,7 @@ struct md_s {
 
 	/* MD_MALLOC related fields */
 	struct indir *indir;
-	uma_zone_t uma;
+	uma_zone_t uma; // a memory allocator
 
 	/* MD_PRELOAD related fields */
 	u_char *pl_ptr;
@@ -400,12 +400,26 @@ s_write(struct indir *ip, off_t offset, uintptr_t ptr)
 	struct indir *cip, *lip[10];
 	int idx, li;
 	uintptr_t up;
-	z_stream strm;
+	//z_stream strm;
 
+/*
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+
+	strm.next_in = ptr;
+	strm.avail_in = sizeof(*ptr);
+
+	strm.avail_out = 512;
+	strm.next_out = ptr;
+	inflateInit(strm);
+	inflate(strm, Z_NO_FLUSH);
+	inflateEnd(strm);
+*/
 	if (md_debug > 1)
 		printf("s_write(%jd, %p)\n", (intmax_t)offset, (void *)ptr);
 	up = 0;
-	li = 0;
+	li = 0; // li?
 	cip = ip;
 	for (;;) {
 		lip[li++] = cip;
@@ -651,6 +665,13 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 	int i, error, error1, ma_offs, notmapped;
 	off_t secno, nsec, uc;
 	uintptr_t sp, osp;
+	/*
+	z_stream strm;
+
+
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;*/
 
 	switch (bp->bio_cmd) {
 	case BIO_READ:
@@ -682,7 +703,7 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 	while (nsec--) {
 		osp = s_read(sc->indir, secno);
 		if (bp->bio_cmd == BIO_DELETE) {
-			if (osp != 0)
+			if (osp != 0) // what does osp stand for?
 				error = s_write(sc->indir, secno, 0);
 		} else if (bp->bio_cmd == BIO_READ) {
 			if (osp == 0) {
@@ -726,16 +747,44 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 		} else if (bp->bio_cmd == BIO_WRITE) {
 			if (sc->flags & MD_COMPRESS) { // what is happening here?
 				if (notmapped) {
+					/*
+					strm.next_in = dst;
+					strm.avail_in = sizeof(*dst);
+
+					strm.avail_out = 512;
+					strm.next_out = dst;
+					inflateInit(strm);
+					inflate(strm, Z_NO_FLUSH);
+					inflateEnd(strm);
+					*/
 					error1 = md_malloc_move_ma(&m, &ma_offs,
 					    sc->sectorsize, &uc, 0,
 					    MD_MALLOC_MOVE_CMP);
 					i = error1 == 0 ? sc->sectorsize : 0;
 				} else if (vlist != NULL) {
+					/*
+					strm.next_in = dst;
+					strm.avail_in = sizeof(*dst);
+
+					strm.avail_out = 512;
+					strm.next_out = dst;
+					inflateInit(strm);
+					inflate(strm, Z_NO_FLUSH);
+					inflateEnd(strm);
+					*/
 					error1 = md_malloc_move_vlist(&vlist, // vlist?
 					    &ma_offs, sc->sectorsize, &uc, 0,
 					    MD_MALLOC_MOVE_CMP);
 					i = error1 == 0 ? sc->sectorsize : 0;
 				} else {
+					/*strm.next_in = dst;
+					strm.avail_in = sizeof(*dst);
+
+					strm.avail_out = 512;
+					strm.next_out = dst;
+					inflateInit(strm);
+					inflate(strm, Z_NO_FLUSH);
+					inflateEnd(strm);*/
 					uc = dst[0];
 					for (i = 1; i < sc->sectorsize; i++) {
 						if (dst[i] != uc)
@@ -746,11 +795,11 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 				i = 0;
 				uc = 0;
 			}
-			if (i == sc->sectorsize) {
+			if (i == sc->sectorsize) { // i = 0 = sectorsize?
 				if (osp != uc)
 					error = s_write(sc->indir, secno, uc);
 			} else {
-				if (osp <= 255) {
+				if (osp <= 255) { // why is <=255 special?
 					sp = (uintptr_t)uma_zalloc(sc->uma,
 					    md_malloc_wait ? M_WAITOK :
 					    M_NOWAIT);
@@ -1202,6 +1251,7 @@ mdstart_null(struct md_s *sc, struct bio *bp)
 	return (0);
 }
 
+// revisit material from the concurrency course
 static void
 md_kthread(void *arg)
 {
