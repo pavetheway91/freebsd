@@ -96,6 +96,13 @@ usage(void)
 	exit(1);
 }
 
+/**
+ * - What to do with the existing compression option? It is a bit
+ *   misleading.
+ * - Which options are relevant for me?
+ * - https://www.youtube.com/watch?v=-6E088mA0No
+ **/
+
 int
 main(int argc, char **argv)
 {
@@ -152,7 +159,7 @@ main(int argc, char **argv)
 				errx(1, "-t can be passed only once");
 			tflag = optarg;
 			if (!strcmp(optarg, "malloc")) {
-				mdio.md_type = MD_MALLOC;
+				mdio.md_type = MD_MALLOC; // I should find this enum...
 				mdio.md_options |= MD_AUTOUNIT | MD_COMPRESS;
 			} else if (!strcmp(optarg, "vnode")) {
 				mdio.md_type = MD_VNODE;
