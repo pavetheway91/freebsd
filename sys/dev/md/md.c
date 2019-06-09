@@ -668,22 +668,36 @@ md_malloc_move_vlist(bus_dma_segment_t **pvlist, int *pma_offs,
 	return (0);
 }
 
+static void
+md_compressed_write(uintptr_t current, struct indir *ip, off_t offset, unsigned char *ptr)
+{
+	z_stream strm;
+
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+
+	stream->avail_in = bp->bio_length;
+	stream->next_in = (Bytef *)read_ptr;
+	stream->avail_out = sc->sectorsize;
+	stream->next_out = (Bytef *)dst;
+
+	if (current <= 255) {
+
+	} else {
+
+	}
+}
+
 static int
 mdstart_malloc(struct md_s *sc, struct bio *bp)
 {
 	u_char *dst;
 	vm_page_t *m;
 	bus_dma_segment_t *vlist;
-	int i, error, error1, ma_offs, notmapped;
-	off_t secno, nsec, uc;
-	uintptr_t write_ptr, read_ptr;
-	/*
-	z_stream strm;
-
-
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;*/
+	int /*i,*/ error, /*error1,*/ ma_offs, notmapped;
+	off_t secno, nsec;//, uc;
+	uintptr_t /*write_ptr, */read_ptr;
 
 	switch (bp->bio_cmd) {
 	case BIO_READ:
@@ -757,46 +771,20 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 			}
 			read_ptr = 0;
 		} else if (bp->bio_cmd == BIO_WRITE) {
+			md_compressed_write(read_ptr, sc->indir, secno, dst);
+			/*
 			if (sc->flags & MD_COMPRESS) { // what is happening here?
 				if (notmapped) {
-					/*
-					strm.next_in = dst;
-					strm.avail_in = sizeof(*dst);
-
-					strm.avail_out = 512;
-					strm.next_out = dst;
-					inflateInit(strm);
-					inflate(strm, Z_NO_FLUSH);
-					inflateEnd(strm);
-					*/
 					error1 = md_malloc_move_ma(&m, &ma_offs,
 					    sc->sectorsize, &uc, 0,
 					    MD_MALLOC_MOVE_CMP);
 					i = error1 == 0 ? sc->sectorsize : 0;
 				} else if (vlist != NULL) {
-					/*
-					strm.next_in = dst;
-					strm.avail_in = sizeof(*dst);
-
-					strm.avail_out = 512;
-					strm.next_out = dst;
-					inflateInit(strm);
-					inflate(strm, Z_NO_FLUSH);
-					inflateEnd(strm);
-					*/
 					error1 = md_malloc_move_vlist(&vlist, // vlist?
 					    &ma_offs, sc->sectorsize, &uc, 0,
 					    MD_MALLOC_MOVE_CMP);
 					i = error1 == 0 ? sc->sectorsize : 0;
 				} else {
-					/*strm.next_in = dst;
-					strm.avail_in = sizeof(*dst);
-
-					strm.avail_out = 512;
-					strm.next_out = dst;
-					inflateInit(strm);
-					inflate(strm, Z_NO_FLUSH);
-					inflateEnd(strm);*/
 					uc = dst[0];
 					for (i = 1; i < sc->sectorsize; i++) {
 						if (dst[i] != uc)
@@ -851,7 +839,8 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 					}
 					read_ptr = 0;
 				}
-			}
+
+			}*/
 		} else {
 			error = EOPNOTSUPP;
 		}
