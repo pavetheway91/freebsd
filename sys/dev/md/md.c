@@ -413,22 +413,7 @@ s_write(struct indir *ip, off_t offset, uintptr_t ptr)
 	struct indir *cip, *lip[10];
 	int idx, li;
 	uintptr_t up;
-	//z_stream strm;
 
-/*
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;
-
-	strm.next_in = ptr;
-	strm.avail_in = sizeof(*ptr);
-
-	strm.avail_out = 512;
-	strm.next_out = ptr;
-	inflateInit(strm);
-	inflate(strm, Z_NO_FLUSH);
-	inflateEnd(strm);
-*/
 	if (md_debug > 1)
 		printf("s_write(%jd, %p)\n", (intmax_t)offset, (void *)ptr);
 	up = 0;
@@ -679,7 +664,7 @@ md_compressed_read(uintptr_t current, struct md_s *sc, struct bio *bp)
 static int
 md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 {
-	z_stream *strm =cs->stream;
+	z_stream *strm = sc->stream;
 
 	if (current <= 255) {
 
