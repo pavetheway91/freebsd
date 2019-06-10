@@ -669,6 +669,24 @@ md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 	int i;
 	off_t uc;
 	uintptr_t sp osp;
+	bus_dma_segment_t *vlist;
+	vm_page_t *m;
+	u_char *dst;
+
+	notmapped = (bp->bio_flags & BIO_UNMAPPED) != 0; 
+	vlist = (bp->bio_flags & BIO_VLIST) != 0 ? 
+		(bus_dma_segment_t *)bp->bio_data : NULL;
+	if (notmapped) {
+		m = bp->bio_ma;
+		ma_offs = bp->bio_ma_offset;
+		dst = NULL;
+		KASSERT(vlist == NULL, ("vlists cannot be unmapped"));
+	} else if (vlist != NULL) {
+		ma_offs = bp->bio_ma_offset;
+		dst = NULL; 
+	} else {
+		dst = bp->bio_data;
+	}
 
 	i = uc = error = 0;
 	if (i == sc->sectorsize) {
@@ -701,7 +719,7 @@ md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 					&vlist, &ma_offs,
 					sc->sectorsize, (void *)osp,
 					0, MD_MALLOC_MOVE_WRITE);
-h			} else {
+			} else {
 				bcopy(dst, (void *)osp, sc->sectorsize);
 			}
 			osp = 0;
