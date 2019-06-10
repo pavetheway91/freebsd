@@ -284,6 +284,8 @@ struct md_s {
 	struct indir *indir;
 	uma_zone_t uma; // a memory allocator
 
+	struct z_stream *strm;
+
 	/* MD_PRELOAD related fields */
 	u_char *pl_ptr;
 	size_t pl_len;
@@ -677,11 +679,7 @@ md_compressed_read(uintptr_t current, struct md_s *sc, struct bio *bp)
 static int
 md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 {
-	z_stream strm;
-
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;
+	z_stream *strm =cs->stream;
 
 	if (current <= 255) {
 
@@ -1429,6 +1427,7 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 	sc->indir = dimension(sc->mediasize / sc->sectorsize);
 	sc->uma = uma_zcreate(sc->name, sc->sectorsize, NULL, NULL, NULL, NULL,
 	    0x1ff, 0);
+	sc->strm = malloc(sizeof(z_stream), M_MD, M_WAITOK | M_ZERO);
 	if (mdr->md_options & MD_RESERVE) {
 		off_t nsectors;
 
