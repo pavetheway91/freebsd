@@ -668,13 +668,13 @@ md_malloc_move_vlist(bus_dma_segment_t **pvlist, int *pma_offs,
 	return (0);
 }
 
-static void
-md_compressed_read(uintptr_t current)
+static int
+md_compressed_read(uintptr_t current, struct md_s *sc, struct bio *bp)
 {
-
+	return 0;
 }
 
-static void
+static int
 md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 {
 	z_stream strm;
@@ -688,6 +688,7 @@ md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 	} else {
 
 	}
+	return 0;
 }
 
 static int
@@ -733,6 +734,7 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 			if (read_ptr != 0)
 				error = s_write(sc->indir, secno, 0);
 		} else if (bp->bio_cmd == BIO_READ) {
+			error = md_compressed_read(read_ptr, sc, bp);
 		/*	if (read_ptr == 0) {
 				if (notmapped) {
 					error = md_malloc_move_ma(&m, &ma_offs,
@@ -772,7 +774,7 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 			}*/
 			read_ptr = 0;
 		} else if (bp->bio_cmd == BIO_WRITE) {
-			md_compressed_write(read_ptr, sc, bp);
+			error = md_compressed_write(read_ptr, sc, bp);
 			/*
 			if (sc->flags & MD_COMPRESS) { // what is happening here?
 				if (notmapped) {
