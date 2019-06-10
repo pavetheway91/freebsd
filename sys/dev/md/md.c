@@ -662,11 +662,11 @@ md_compressed_read(uintptr_t current, struct md_s *sc, struct bio *bp)
 }
 
 static int
-md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
+md_compressed_write(uintptr_t osp, struct md_s *sc, struct bio *bp)
 {
 //	z_stream *strm = sc->stream;
 
-	int i;
+	int i, ma_offs, notmapped, error;
 	off_t uc;
 	uintptr_t sp osp;
 	bus_dma_segment_t *vlist;
