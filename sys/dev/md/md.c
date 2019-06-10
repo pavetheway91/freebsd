@@ -664,14 +664,50 @@ md_compressed_read(uintptr_t current, struct md_s *sc, struct bio *bp)
 static int
 md_compressed_write(uintptr_t current, struct md_s *sc, struct bio *bp)
 {
-	z_stream *strm = sc->stream;
+//	z_stream *strm = sc->stream;
 
-	if (current <= 255) {
+	int i;
+	off_t uc;
+	uintptr_t sp osp;
 
+	i = uc = error = 0;
+	if (i == sc->sectorsize) {
+		if (read_ptr != uc)
+			error = s_write(sc->indir, secno, uc);
 	} else {
-
+		if (current <= 255) {
+			sp = (uintptr_t)uma_zalloc(sc->uma, md_malloc_wait ? M_WAITOK : M_NOWAIT);
+			if (notmapped) {
+				error = md_malloc_move_ma(&m,
+					&ma_offs, sc->sectorsize,
+					(void *)sp, 0,
+					MD_MALLOC_MOVE_WRITE);
+			} else if (vlist != NULL) {
+				error = md_malloc_move_vlist(
+					&vlist, &ma_offs,
+					sc->sectorsize, (void *)sp,
+					0, MD_MALLOC_MOVE_WRITE);
+			} else {
+				bcopy(dst, (void *)sp, sc->sectorsize);
+			}
+		} else {
+			if (notmapped) {
+				error = md_malloc_move_ma(&m,
+					&ma_offs, sc->sectorsize,
+					(void *)osp, 0,
+					MD_MALLOC_MOVE_WRITE);
+			} else if (vlist != NULL) {
+				error = md_malloc_move_vlist(
+					&vlist, &ma_offs,
+					sc->sectorsize, (void *)osp,
+					0, MD_MALLOC_MOVE_WRITE);
+h			} else {
+				bcopy(dst, (void *)osp, sc->sectorsize);
+			}
+			osp = 0;
+		}
 	}
-	return 0;
+	return error;
 }
 
 static int
