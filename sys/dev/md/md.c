@@ -658,6 +658,48 @@ md_malloc_move_vlist(bus_dma_segment_t **pvlist, int *pma_offs,
 static int
 md_compressed_read(off_t secno, uintptr_t osp, struct md_s *sc, struct bio *bp)
 {
+	int error;
+	error = 0;
+
+	if (osp == 0) {
+		if (notmapped) {
+			error = md_malloc_move_ma(&m, &ma_offs,
+				sc->sectorsize, NULL, 0,
+				MD_MALLOC_MOVE_ZERO);
+		} else if (vlist != NULL) {
+			error = md_malloc_move_vlist(&vlist,
+				&ma_offs, sc->sectorsize, NULL, 0,
+				MD_MALLOC_MOVE_ZERO);
+		} else {
+			bzero(dst, sc->sectorsize);
+		}
+	} else if (osp <= 255) {
+		if (notmapped) {
+			error = md_malloc_move_ma(&m, &ma_offs,
+				sc->sectorsize, NULL, osp,
+				MD_MALLOC_MOVE_FILL);
+		} else if (vlist != NULL) {
+			error = md_malloc_move_vlist(&vlist,
+				&ma_offs, sc->sectorsize, NULL, osp,
+				MD_MALLOC_MOVE_FILL);
+		} else {
+			memset(dst, osp, sc->sectorsize);
+		}
+	} else {
+		if (notmapped) {
+			error = md_malloc_move_ma(&m, &ma_offs,
+				sc->sectorsize, (void *)osp, 0,
+				MD_MALLOC_MOVE_READ);
+		} else if (vlist != NULL) {
+			error = md_malloc_move_vlist(&vlist,
+				&ma_offs, sc->sectorsize,
+				(void *)osp, 0,
+				MD_MALLOC_MOVE_READ);
+		} else {
+			bcopy((void *)osp, dst, sc->sectorsize);
+			cpu_flush_dcache(dst, sc->sectorsize);
+		}
+	}
 	return 0;
 }
 
