@@ -658,9 +658,27 @@ md_malloc_move_vlist(bus_dma_segment_t **pvlist, int *pma_offs,
 static int
 md_compressed_read(off_t secno, uintptr_t osp, struct md_s *sc, struct bio *bp)
 {
-	int error;
-	error = 0;
+	int error, notmapped, ma_offs;
+	bus_dma_segment_t *vlist;
+	vm_page_t *m;
+	u_char *dst;
 
+	notmapped = (bp->bio_flags & BIO_UNMAPPED) != 0;
+	vlist = (bp->bio_flags & BIO_VLIST) != 0 ?
+	    (bus_dma_segment_t *)bp->bio_data : NULL;
+	if (notmapped) {
+		m = bp->bio_ma;
+		ma_offs = bp->bio_ma_offset;
+		dst = NULL;
+		KASSERT(vlist == NULL, ("vlists cannot be unmapped"));
+	} else if (vlist != NULL) {
+		ma_offs = bp->bio_ma_offset;
+		dst = NULL;
+	} else {
+		dst = bp->bio_data;
+	}
+
+	error = 0;
 	if (osp == 0) {
 		if (notmapped) {
 			error = md_malloc_move_ma(&m, &ma_offs,
