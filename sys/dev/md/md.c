@@ -106,6 +106,9 @@
 
 #include <machine/bus.h>
 
+#include <sys/zlib.h>
+//#include <contrib/zstd/lib/zstd.h>
+
 #define MD_MODVER 1
 
 #define MD_SHUTDOWN	0x10000		/* Tell worker thread to terminate. */
@@ -235,6 +238,16 @@ static LIST_HEAD(, md_s) md_softc_list = LIST_HEAD_INITIALIZER(md_softc_list);
 static int nshift;
 
 static uma_zone_t md_pbuf_zone;
+
+#define MD_COMPRES_NONE 0
+#define MD_COMPRES_LZ4 1
+#define MD_COMPRES_ZSTD 2
+#define MD_COMPRES_ZLIB 3
+
+struct sector {
+	uintptr_t *data;
+	u_int size;
+};
 
 struct indir {
 	uintptr_t	*array;
