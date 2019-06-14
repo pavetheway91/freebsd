@@ -282,6 +282,13 @@ struct md_s {
 	struct indir *indir;
 	uma_zone_t uma;
 
+	union {
+		// lz4 stream
+		// zstd strem
+		struct z_stream_s *z_stream;
+	};
+	int algo;
+
 	/* MD_PRELOAD related fields */
 	u_char *pl_ptr;
 	size_t pl_len;
