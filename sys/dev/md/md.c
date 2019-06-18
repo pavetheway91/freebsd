@@ -820,6 +820,47 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 	return (error);
 }
 
+static int
+mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
+{
+	int error;
+
+	error = 0;
+	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
+		return (EINVAL);
+	if (mdr->md_sectorsize != 0 && !powerof2(mdr->md_sectorsize))
+		return (EINVAL);
+
+	if (mdr->md_options & MD_RESERVE)
+		mdr->md_options &= ~MD_COMPRESS;
+	if (mdr->md_fwsectors != 0)
+		sc->fwsectors = mdr->md_fwsectors;
+	if (mdr->md_fwheads != 0)
+		sc->fwheads = mdr->md_fwheads;
+
+	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
+	sc->indir = dimension(sc->mediasize / sc->sectorsize);
+	sc->uma = uma_zcreate(sc->name, sc->sectorsize, NULL, NULL, NULL, NULL,
+	    0x1ff, 0);
+	if (mdr->md_options & MD_RESERVE) {
+		return (EINVAL);
+	}
+	printf("mdcreate code %d\n", error);
+	return (error);
+}
+
+static int
+mdstart_compressed(struct md_s *sc, struct bio *bp)
+{
+	off_t secno, nsec;//, uc;
+
+	nsec = bp->bio_length / sc->sectorsize;
+	secno = bp->bio_offset / sc->sectorsize;
+	printf("nsec %jd, secno %jd, secsize %d\n", nsec, secno, sc->sectorsize);
+
+	return 0;
+}
+
 static void
 mdcopyto_vlist(void *src, bus_dma_segment_t *vlist, off_t offset, off_t len)
 {
@@ -1351,6 +1392,7 @@ mdinit(struct md_s *sc)
 	case MD_SWAP:
 		pp->flags |= G_PF_ACCEPT_UNMAPPED;
 		break;
+	case MD_COMPRESSED:
 	case MD_PRELOAD:
 	case MD_NULL:
 		break;
@@ -1708,6 +1750,7 @@ kern_mdattach_locked(struct thread *td, struct md_req *mdr)
 
 	switch (mdr->md_type) {
 	case MD_MALLOC:
+	case MD_COMPRESSED:
 	case MD_PRELOAD:
 	case MD_VNODE:
 	case MD_SWAP:
@@ -1745,6 +1788,10 @@ kern_mdattach_locked(struct thread *td, struct md_req *mdr)
 	case MD_MALLOC:
 		sc->start = mdstart_malloc;
 		error = mdcreate_malloc(sc, mdr);
+		break;
+	case MD_COMPRESSED:
+		sc->start = mdstart_compressed;
+		error = mdcreate_compressed(sc, mdr);
 		break;
 	case MD_PRELOAD:
 		/*
