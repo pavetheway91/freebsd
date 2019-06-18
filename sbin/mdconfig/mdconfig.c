@@ -154,6 +154,9 @@ main(int argc, char **argv)
 			if (!strcmp(optarg, "malloc")) {
 				mdio.md_type = MD_MALLOC;
 				mdio.md_options |= MD_AUTOUNIT | MD_COMPRESS;
+			} else if (!strcmp(optarg, "compressed")) {
+				mdio.md_type = MD_COMPRESSED;
+				mdio.md_options |= MD_AUTOUNIT;
 			} else if (!strcmp(optarg, "vnode")) {
 				mdio.md_type = MD_VNODE;
 				mdio.md_options |= MD_CLUSTER | MD_AUTOUNIT | MD_COMPRESS;

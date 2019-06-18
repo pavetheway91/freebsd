@@ -852,13 +852,63 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 static int
 mdstart_compressed(struct md_s *sc, struct bio *bp)
 {
+	u_char *dst;
+	int retval;
 	off_t secno, nsec;//, uc;
+	uintptr_t read_ptr, write_buf;
 
+	dst = bp->bio_data;
 	nsec = bp->bio_length / sc->sectorsize;
 	secno = bp->bio_offset / sc->sectorsize;
-	printf("nsec %jd, secno %jd, secsize %d\n", nsec, secno, sc->sectorsize);
+	//printf("nsec %jd, secno %jd, secsize %d\n", nsec, secno, sc->sectorsize);
 
-	return 0;
+	retval = 0;
+	while (nsec--) {
+		read_ptr = s_read(sc->indir, secno);
+		switch(bp->bio_cmd)
+		{
+		case BIO_DELETE:
+			if (read_ptr != 0)
+				retval = s_write(sc->indir, secno, 0);
+			break;
+		case BIO_READ:
+			if (read_ptr == 0) {
+				bzero(dst, sc->sectorsize);
+			} else {
+				if (read_ptr <= 255) {
+					memset(dst, read_ptr, sc->sectorsize);
+				} else {
+					bcopy((void *)read_ptr, dst, sc->sectorsize);
+					cpu_flush_dcache(dst, sc->sectorsize);
+				}
+			}
+		case BIO_WRITE:
+			if (read_ptr <= 255) {
+				write_buf = (uintptr_t)uma_zalloc(sc->uma, md_malloc_wait ? M_WAITOK : M_NOWAIT);
+				if (write_buf == 0)
+				{
+					retval = ENOSPC;
+					break;
+				}
+				bcopy(dst, (void *)write_buf, sc->sectorsize);
+				retval = s_write(sc->indir, secno, write_buf);
+			} else {
+				bcopy(dst, (void *)read_ptr, sc->sectorsize);
+			}
+			break;
+		default:
+			return (EOPNOTSUPP);
+		}
+		if (read_ptr > 255)
+			uma_zfree(sc->uma, (void*)read_ptr);
+		if (retval != 0)
+			break;
+		secno++;
+		dst += sc->sectorsize;
+	}
+	bp->bio_resid = 0;
+
+	return retval;
 }
 
 static void
