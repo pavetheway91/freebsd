@@ -856,10 +856,24 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 	int retval;
 	off_t secno, nsec;//, uc;
 	uintptr_t read_ptr, write_buf;
+	struct z_stream_s *stream;
+
+	if ((bp->bio_flags & BIO_UNMAPPED) != 0)
+	{
+		printf("BIO_UNMAPPED is not yet supported");
+		return (EOPNOTSUPP);
+	}
+	if ((bp->bio_flags & BIO_VLIST) != 0)
+	{
+		printf("BIO_VLIST is not yet supported");
+		return (EOPNOTSUPP);
+	}
 
 	dst = bp->bio_data;
 	nsec = bp->bio_length / sc->sectorsize;
 	secno = bp->bio_offset / sc->sectorsize;
+	stream = sc->z_stream;
+
 	//printf("nsec %jd, secno %jd, secsize %d\n", nsec, secno, sc->sectorsize);
 
 	retval = 0;
@@ -882,6 +896,8 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 					cpu_flush_dcache(dst, sc->sectorsize);
 				}
 			}
+			read_ptr = 0;
+			break;
 		case BIO_WRITE:
 			if (read_ptr <= 255) {
 				write_buf = (uintptr_t)uma_zalloc(sc->uma, md_malloc_wait ? M_WAITOK : M_NOWAIT);
@@ -894,6 +910,7 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				retval = s_write(sc->indir, secno, write_buf);
 			} else {
 				bcopy(dst, (void *)read_ptr, sc->sectorsize);
+				read_ptr = 0;
 			}
 			break;
 		default:
