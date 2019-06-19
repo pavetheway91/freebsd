@@ -45,7 +45,7 @@
 #ifndef _SYS_MDIOCTL_H_
 #define _SYS_MDIOCTL_H_
 
-enum md_types {MD_MALLOC, MD_PRELOAD, MD_VNODE, MD_SWAP, MD_NULL};
+enum md_types {MD_MALLOC, MD_COMPRESSED, MD_PRELOAD, MD_VNODE, MD_SWAP, MD_NULL};
 
 /*
  * Ioctl definitions for memory disk pseudo-device.
