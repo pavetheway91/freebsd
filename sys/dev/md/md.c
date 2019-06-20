@@ -824,6 +824,7 @@ static int
 mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 {
 	int error;
+	struct z_stream_s *stream;
 
 	error = 0;
 	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
@@ -837,6 +838,12 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 		sc->fwsectors = mdr->md_fwsectors;
 	if (mdr->md_fwheads != 0)
 		sc->fwheads = mdr->md_fwheads;
+
+	stream = malloc(sizeof *stream, M_MD, M_WAITOK | M_ZERO);
+	stream->zalloc = Z_NULL;
+	stream->zfree = Z_NULL;
+	stream->opaque = Z_NULL;
+	sc->z_stream = stream;
 
 	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
 	sc->indir = dimension(sc->mediasize / sc->sectorsize);
@@ -926,8 +933,6 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				deflateInit(stream, Z_BEST_SPEED);
 				deflate(stream, Z_NO_FLUSH);
 				deflateEnd(stream);
-
-				//bcopy(dst, (void *)write_buf, sc->sectorsize);
 */
 				bcopy(dst, (void *)write_buf, sc->sectorsize);
 				retval = s_write(sc->indir, secno, write_buf);
