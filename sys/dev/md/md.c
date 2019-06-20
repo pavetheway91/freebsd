@@ -889,6 +889,16 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 			if (read_ptr == 0) {
 				bzero(dst, sc->sectorsize);
 			} else {
+/*
+				stream->avail_in = bp->bio_length;
+				stream->next_in = (Bytef *)read_ptr;
+				stream->avail_out = sc->sectorsize;
+				stream->next_out = (Bytef *)dst;
+
+				inflateInit(stream);
+				inflate(stream, Z_NO_FLUSH);
+				inflateEnd(stream);
+*/
 				if (read_ptr <= 255) {
 					memset(dst, read_ptr, sc->sectorsize);
 				} else {
@@ -901,14 +911,37 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 		case BIO_WRITE:
 			if (read_ptr <= 255) {
 				write_buf = (uintptr_t)uma_zalloc(sc->uma, md_malloc_wait ? M_WAITOK : M_NOWAIT);
+
 				if (write_buf == 0)
 				{
 					retval = ENOSPC;
 					break;
 				}
+/*
+				stream->avail_in = bp->bio_length;
+				stream->next_in = (Bytef *)dst;
+				stream->avail_out = sc->sectorsize;
+				stream->next_out = (Bytef *)write_buf;
+
+				deflateInit(stream, Z_BEST_SPEED);
+				deflate(stream, Z_NO_FLUSH);
+				deflateEnd(stream);
+
+				//bcopy(dst, (void *)write_buf, sc->sectorsize);
+*/
 				bcopy(dst, (void *)write_buf, sc->sectorsize);
 				retval = s_write(sc->indir, secno, write_buf);
 			} else {
+/*
+				stream->avail_in = bp->bio_length;
+				stream->next_in = (Bytef *)dst;
+				stream->avail_out = sc->sectorsize;
+				stream->next_out = (Bytef *)read_ptr;
+
+				deflateInit(stream, Z_BEST_SPEED);
+				deflate(stream, Z_NO_FLUSH);
+				deflateEnd(stream);
+*/
 				bcopy(dst, (void *)read_ptr, sc->sectorsize);
 				read_ptr = 0;
 			}
