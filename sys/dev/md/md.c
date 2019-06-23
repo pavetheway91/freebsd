@@ -844,6 +844,7 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 	stream->zfree = Z_NULL;
 	stream->opaque = Z_NULL;
 	sc->z_stream = stream;
+	sc->algo = MD_COMPRES_ZLIB;
 
 	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
 	sc->indir = dimension(sc->mediasize / sc->sectorsize);
@@ -853,6 +854,46 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 		return (EINVAL);
 	}
 	printf("mdcreate code %d\n", error);
+	return (error);
+}
+
+static int
+md_compress(struct md_s *sc, uintptr_t *input, uintptr_t *output)
+{
+	int error = 0;
+
+	switch(sc->algo)
+	{
+	case MD_COMPRES_LZ4:
+		break;
+	case MD_COMPRES_ZSTD:
+		break;
+	case MD_COMPRES_ZLIB:
+		break;
+	default:
+		break;
+	}
+
+	return (error);
+}
+
+static int
+md_uncompress(struct md_s *sc, uintptr_t *input, uintptr_t *output)
+{
+	int error = 0;
+
+	switch(sc->algo)
+	{
+	case MD_COMPRES_LZ4:
+		break;
+	case MD_COMPRES_ZSTD:
+		break;
+	case MD_COMPRES_ZLIB:
+		break;
+	default:
+		break;
+	}
+
 	return (error);
 }
 
@@ -897,9 +938,9 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				bzero(dst, sc->sectorsize);
 			} else {
 /*
-				stream->avail_in = bp->bio_length;
+				stream->avail_in = (uInt)bp->bio_length;
 				stream->next_in = (Bytef *)read_ptr;
-				stream->avail_out = sc->sectorsize;
+				stream->avail_out = (uInt)sc->sectorsize;
 				stream->next_out = (Bytef *)dst;
 
 				inflateInit(stream);
@@ -925,9 +966,9 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 					break;
 				}
 /*
-				stream->avail_in = bp->bio_length;
+				stream->avail_in = (uInt)bp->bio_length+1;
 				stream->next_in = (Bytef *)dst;
-				stream->avail_out = sc->sectorsize;
+				stream->avail_out = (uInt)sc->sectorsize;
 				stream->next_out = (Bytef *)write_buf;
 
 				deflateInit(stream, Z_BEST_SPEED);
@@ -938,9 +979,9 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				retval = s_write(sc->indir, secno, write_buf);
 			} else {
 /*
-				stream->avail_in = bp->bio_length;
+				stream->avail_in = (uInt)bp->bio_length+1;
 				stream->next_in = (Bytef *)dst;
-				stream->avail_out = sc->sectorsize;
+				stream->avail_out = (uInt)sc->sectorsize;
 				stream->next_out = (Bytef *)read_ptr;
 
 				deflateInit(stream, Z_BEST_SPEED);
