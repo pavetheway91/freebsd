@@ -919,7 +919,7 @@ static int
 mdstart_compressed(struct md_s *sc, struct bio *bp)
 {
 	u_char *dst;
-	int retval;
+	int retval, z_status;
 	off_t secno, nsec;//, uc;
 	uintptr_t read_ptr, write_buf;
 	struct z_stream_s *stream;
@@ -958,10 +958,15 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				stream->avail_in = (uInt)sc->sectorsize;
 				stream->next_in = (Bytef *)read_ptr;
 				stream->avail_out = (uInt)sc->sectorsize;
-				stream->next_out = (Bytef *)sc->compr_buf;
+				stream->next_out = (Bytef *)dst;
 
 				inflateInit(stream);
-				inflate(stream, Z_NO_FLUSH);
+				z_status = inflate(stream, Z_FINISH);
+				if (z_status != Z_OK && z_status != Z_STREAM_END)
+				{
+					printf("inflate error: %s\n", stream->msg);
+					return z_status;
+				}
 				inflateEnd(stream);
 /*
 				if (read_ptr <= 255) {
@@ -989,7 +994,12 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				stream->next_out = (Bytef *)write_buf;
 
 				deflateInit(stream, (int)6);
-				deflate(stream, Z_NO_FLUSH);
+				z_status = deflate(stream, Z_FINISH);
+				if (z_status != Z_OK && z_status != Z_STREAM_END)
+				{
+					printf("deflate error: %s\n", stream->msg);
+					return z_status;
+				}
 				deflateEnd(stream);
 
 				//bcopy(dst, (void *)write_buf, sc->sectorsize);
@@ -1002,10 +1012,15 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				stream->next_out = (Bytef *)read_ptr;
 
 				deflateInit(stream, (int)6);
-				deflate(stream, Z_NO_FLUSH);
+				z_status = deflate(stream, Z_FINISH);
+				if (z_status != Z_OK && z_status != Z_STREAM_END)
+				{
+					printf("deflate error: %s\n", stream->msg);
+					return z_status;
+				}
 				deflateEnd(stream);
 
-				//bcopy(dst, (void *)read_ptr, sc->sectorsize);
+				//bcopy(sc->compr_buf, (void *)read_ptr, sc->sectorsize);
 				read_ptr = 0;
 			}
 			break;
