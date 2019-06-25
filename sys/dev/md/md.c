@@ -875,7 +875,7 @@ struct sector {
 static int
 md_compress(struct md_s *sc, uintptr_t *input)
 {
-	int error = 0;
+	int error = 0, z_status;
 	struct z_stream_s *stream;
 
 	switch(sc->algo)
@@ -885,13 +885,26 @@ md_compress(struct md_s *sc, uintptr_t *input)
 	case MD_COMPRESS_ZSTD:
 		break;
 	case MD_COMPRESS_ZLIB:
-
 		stream = sc->z_stream;
 
 		stream->avail_in = sc->sectorsize;
 		stream->next_in = (Bytef *)input;
 		stream->avail_out = sc->sectorsize * 2;
 		stream->next_out = (Bytef *)sc->compr_buf;
+
+		deflateInit(stream, (int)6);
+		z_status = inflate(stream, Z_FINISH);
+		if (z_status != Z_OK && z_status != Z_STREAM_END)
+		{
+			printf("inflate error: %s\n", stream->msg);
+			return z_status;
+		}
+		inflateEnd(stream);
+
+		sector->size = (int) stream->total_out;
+
+		sector->data = malloc(sector->size, M_MD, M_WAITOK | M_ZERO);
+		bcopy((void *)sc->compr_buf, sector->data, sector->size);
 		break;
 	default:
 		break;
