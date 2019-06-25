@@ -867,6 +867,11 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 	return (error);
 }
 
+struct sector {
+	uintptr_t	*data;
+	u_int		size;
+};
+
 static int
 md_compress(struct md_s *sc, uintptr_t *input)
 {
