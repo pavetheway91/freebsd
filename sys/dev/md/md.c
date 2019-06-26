@@ -902,7 +902,10 @@ md_compress(struct md_s *sc, uintptr_t *input)
 		inflateEnd(stream);
 
 		sector->size = (int) stream->total_out;
-
+		if (sector->data != NULL)
+		{
+			free(sector->data, M_MD);
+		}
 		sector->data = malloc(sector->size, M_MD, M_WAITOK | M_ZERO);
 		bcopy((void *)sc->compr_buf, sector->data, sector->size);
 		break;
