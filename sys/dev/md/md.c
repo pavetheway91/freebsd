@@ -873,7 +873,7 @@ struct sector {
 };
 
 static int
-md_compress(struct md_s *sc, uintptr_t *input)
+md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 {
 	int error = 0, z_status;
 	struct z_stream_s *stream;
@@ -917,9 +917,10 @@ md_compress(struct md_s *sc, uintptr_t *input)
 }
 
 static int
-md_uncompress(struct md_s *sc, uintptr_t *input)
+md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
 {
-	int error = 0;
+	int error = 0, z_status;
+	struct z_stream_s *stream;
 
 	switch(sc->algo)
 	{
@@ -928,6 +929,22 @@ md_uncompress(struct md_s *sc, uintptr_t *input)
 	case MD_COMPRESS_ZSTD:
 		break;
 	case MD_COMPRESS_ZLIB:
+		stream = sc->z_stream;
+
+		stream->avail_in = sc->sectorsize;
+		stream->next_in = (Bytef *)sector->data;
+		stream->avail_out = (uInt)sc->sectorsize;
+		stream->next_out = (Bytef *)output;
+
+		inflateInit(stream);
+		z_status = inflate(stream, Z_FINISH);
+		if (z_status != Z_OK && z_status != Z_STREAM_END)
+		{
+			printf("inflate error: %s\n", stream->msg);
+			return z_status;
+		}
+		inflateEnd(stream);
+
 		break;
 	default:
 		break;
@@ -935,6 +952,7 @@ md_uncompress(struct md_s *sc, uintptr_t *input)
 
 	return (error);
 }
+
 
 static int
 mdstart_compressed(struct md_s *sc, struct bio *bp)
