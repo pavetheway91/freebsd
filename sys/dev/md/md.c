@@ -958,6 +958,39 @@ static int
 mdstart_compressed(struct md_s *sc, struct bio *bp)
 {
 	u_char *dst;
+	int retval;
+	off_t secno, nsec;
+	uintptr_t sector;
+
+	if ((bp->bio_flags & BIO_UNMAPPED) != 0)
+	{
+		printf("BIO_UNMAPPED is not yet supported");
+		return (EOPNOTSUPP);
+	}
+	if ((bp->bio_flags & BIO_VLIST) != 0)
+	{
+		printf("BIO_VLIST is not yet supported");
+		return (EOPNOTSUPP);
+	}
+
+	dst = bp->bio_data;
+	nsec = bp->bio_length / sc->sectorsize;
+	secno = bp->bio_offset / sc->sectorsize;
+	retval = 0;
+
+	while (nsec--) {
+
+	}
+	bp->bio_resid = 0;
+
+	return retval;
+}
+
+
+static int
+mdstart_compressed_old(struct md_s *sc, struct bio *bp)
+{
+	u_char *dst;
 	int retval, z_status;
 	off_t secno, nsec;//, uc;
 	uintptr_t read_ptr, write_buf;
