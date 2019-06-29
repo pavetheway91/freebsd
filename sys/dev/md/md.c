@@ -979,7 +979,34 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 	retval = 0;
 
 	while (nsec--) {
+		sector = s_read(sc->indir, secno);
+		switch(bp->bio_cmd)
+		{
+		case BIO_DELETE:
+			if (sector != 0)
+			break;
+		case BIO_READ:
+			if (sector == 0) {
+			} else {
+			}
+			sector = 0;
+			break;
+		case BIO_WRITE:
+			if (sector <= 255) {
 
+			} else {
+
+			}
+			break;
+		default:
+			return (EOPNOTSUPP);
+		}
+		if (sector > 255)
+			//uma_zfree(sc->uma, (void*)read_ptr);
+		if (retval != 0)
+			break;
+		secno++;
+		dst += sc->sectorsize;
 	}
 	bp->bio_resid = 0;
 
