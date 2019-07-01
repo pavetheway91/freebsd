@@ -984,18 +984,24 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 		{
 		case BIO_DELETE:
 			if (sector != 0)
+				retval = s_write(sc->indir, secno, 0);
 			break;
 		case BIO_READ:
 			if (sector == 0) {
+				bzero(dst, sc->sectorsize);
 			} else {
+				md_uncompress(sc, (struct sector*) sector, dst);
 			}
 			sector = 0;
 			break;
 		case BIO_WRITE:
 			if (sector <= 255) {
-
+				sector = (uintptr_t) malloc(sizeof(struct sector), M_MD, M_WAITOK | M_ZERO);
+				md_compress(sc, (struct sector*) sector, dst);
+				retval = s_write(sc->indir, secno, sector);
 			} else {
-
+				md_compress(sc, (struct sector*) sector, dst);
+				sector = 0;
 			}
 			break;
 		default:
