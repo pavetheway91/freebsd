@@ -893,13 +893,13 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 		stream->next_out = (Bytef *)sc->compr_buf;
 
 		deflateInit(stream, (int)6);
-		z_status = inflate(stream, Z_FINISH);
+		z_status = deflate(stream, Z_FINISH);
 		if (z_status != Z_OK && z_status != Z_STREAM_END)
 		{
-			printf("inflate error: %s\n", stream->msg);
+			printf("deflate error: %s\n", stream->msg);
 			return z_status;
 		}
-		inflateEnd(stream);
+		deflateEnd(stream);
 
 		sector->size = (int) stream->total_out;
 		if (sector->data != NULL)
@@ -953,6 +953,12 @@ md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
 	return (error);
 }
 
+static void
+md_erase_sector(struct sector *sector)
+{
+	free(sector->data, M_MD);
+	sector->size = 0;
+}
 
 static int
 mdstart_compressed(struct md_s *sc, struct bio *bp)
@@ -1008,7 +1014,8 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 			return (EOPNOTSUPP);
 		}
 		if (sector > 255)
-			//uma_zfree(sc->uma, (void*)read_ptr);
+			md_erase_sector((struct sector*) sector);
+			free((struct sector*) sector, M_MD);
 		if (retval != 0)
 			break;
 		secno++;
