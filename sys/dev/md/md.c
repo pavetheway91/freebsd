@@ -990,7 +990,7 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 		{
 		case BIO_DELETE:
 			if (sector != 0)
-				//retval = s_write(sc->indir, secno, 0);
+				retval = s_write(sc->indir, secno, 0);
 			break;
 		case BIO_READ:
 			if (sector == 0) {
@@ -1014,8 +1014,8 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 			return (EOPNOTSUPP);
 		}
 		if (sector > 255)
-			md_erase_sector((struct sector*) sector);
-			free((struct sector*) sector, M_MD);
+			//md_erase_sector((struct sector*) sector);
+			//free((struct sector*) sector, M_MD);
 		if (retval != 0)
 			break;
 		secno++;
