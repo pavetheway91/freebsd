@@ -2524,6 +2524,9 @@ g_md_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 	case MD_NULL:
 		type = "null";
 		break;
+	case MD_COMPRESSED:
+		type = "compressed";
+		break;
 	default:
 		type = "unknown";
 		break;
