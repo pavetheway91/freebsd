@@ -852,7 +852,7 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 	stream->opaque = Z_NULL;
 	sc->z_stream = stream;
 
-	sc->algo = MD_COMPRESS_ZLIB;
+	sc->algo = MD_COMPRESS_ZSTD;
 
 	sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
 
@@ -883,8 +883,20 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 	case MD_COMPRESS_LZ4:
 		break;
 	case MD_COMPRESS_ZSTD:
+
+		sector->size = (int) ZSTD_compress(
+			(void*) sc->compr_buf, sc->sectorsize * 2, (void*) input, sc->sectorsize, 6
+		);
+		if (sector->data != NULL)
+		{
+			free(sector->data, M_MD);
+		}
+		sector->data = malloc(sector->size, M_MD, M_WAITOK | M_ZERO);
+		bcopy((void *)sc->compr_buf, sector->data, sector->size);
+
 		break;
 	case MD_COMPRESS_ZLIB:
+
 		stream = sc->z_stream;
 
 		stream->avail_in = sc->sectorsize;
@@ -927,6 +939,9 @@ md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
 	case MD_COMPRESS_LZ4:
 		break;
 	case MD_COMPRESS_ZSTD:
+		ZSTD_decompress(
+			(void*) output, sc->sectorsize, (void*) sector->data, sector->size
+        );
 		break;
 	case MD_COMPRESS_ZLIB:
 		stream = sc->z_stream;
