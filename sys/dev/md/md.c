@@ -107,7 +107,7 @@
 #include <machine/bus.h>
 
 #include <sys/zlib.h>
-//#include <contrib/zstd/lib/zstd.h>
+#include <contrib/zstd/lib/zstd.h>
 
 #define MD_MODVER 1
 
