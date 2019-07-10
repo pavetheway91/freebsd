@@ -282,6 +282,8 @@ struct md_s {
 	int algo;
 	uintptr_t	*compr_buf;
 	unsigned	compr_buf_size;
+ 	unsigned	usedsectors;
+ 	unsigned	written;
 
 	/* MD_PRELOAD related fields */
 	u_char *pl_ptr;
@@ -1006,6 +1008,9 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 		case BIO_DELETE:
 			if (sector != 0)
 				retval = s_write(sc->indir, secno, 0);
+				sc->usedsectors--;
+				md_erase_sector((struct sector*) sector);
+				free((struct sector*) sector, M_MD);
 			break;
 		case BIO_READ:
 			if (sector == 0) {
@@ -1019,6 +1024,7 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 			if (sector <= 255) {
 				sector = (uintptr_t) malloc(sizeof(struct sector), M_MD, M_WAITOK | M_ZERO);
 				md_compress(sc, (struct sector*) sector, dst);
+				sc->usedsectors++;
 				retval = s_write(sc->indir, secno, sector);
 			} else {
 				md_compress(sc, (struct sector*) sector, dst);
