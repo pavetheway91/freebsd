@@ -884,6 +884,16 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 	switch(sc->algo)
 	{
 	case MD_COMPRESS_LZ4:
+		sector->size = LZ4_compress_default(
+			(char*) input, (char*) sc->compr_buf, sc->sectorsize, sc->sectorsize * 2
+		);
+		if (sector->data != NULL)
+		{
+			free(sector->data, M_MD);
+		}
+		sector->data = malloc(sector->size, M_MD, M_WAITOK | M_ZERO);
+		bcopy((void *)sc->compr_buf, sector->data, sector->size);
+
 		break;
 	case MD_COMPRESS_ZSTD:
 
@@ -940,6 +950,9 @@ md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
 	switch(sc->algo)
 	{
 	case MD_COMPRESS_LZ4:
+		LZ4_decompress_safe(
+			(char*) sector->data, (char*) output, sector->size, sc->sectorsize
+        );
 		break;
 	case MD_COMPRESS_ZSTD:
 		ZSTD_decompress(
