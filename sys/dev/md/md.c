@@ -108,6 +108,7 @@
 
 #include <sys/zlib.h>
 #include <contrib/zstd/lib/zstd.h>
+#include <contrib/lz4/lib/lz4.h>
 
 #define MD_MODVER 1
 
