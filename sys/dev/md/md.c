@@ -858,6 +858,7 @@ mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
 	sc->algo = MD_COMPRESS_ZSTD;
 
 	sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
+	sc->usedsectors = sc->written = 0;
 
 	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
 	sc->indir = dimension(sc->mediasize / sc->sectorsize);
@@ -1025,6 +1026,7 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				sc->usedsectors--;
 				md_erase_sector((struct sector*) sector);
 				free((struct sector*) sector, M_MD);
+				//sc->written = sc->written - ((struct sector*) sector)->size;
 			break;
 		case BIO_READ:
 			if (sector == 0) {
@@ -1042,8 +1044,10 @@ mdstart_compressed(struct md_s *sc, struct bio *bp)
 				retval = s_write(sc->indir, secno, sector);
 			} else {
 				md_compress(sc, (struct sector*) sector, dst);
+				//sc->written = sc->written - ((struct sector*) sector)->size;
 				sector = 0;
 			}
+			//sc->written = sc->written + ((struct sector*) sector)->size;
 			break;
 		default:
 			return (EOPNOTSUPP);
