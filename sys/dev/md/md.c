@@ -63,6 +63,7 @@
 #include "opt_rootdevname.h"
 #include "opt_geom.h"
 #include "opt_md.h"
+#include "opt_zstdio.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -897,7 +898,7 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 
 		break;
 	case MD_COMPRESS_ZSTD:
-
+#ifdef ZSTDIO
 		sector->size = (int) ZSTD_compress(
 			(void*) sc->compr_buf, sc->sectorsize * 2, (void*) input, sc->sectorsize, 6
 		);
@@ -907,7 +908,9 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 		}
 		sector->data = malloc(sector->size, M_MD, M_WAITOK | M_ZERO);
 		bcopy((void *)sc->compr_buf, sector->data, sector->size);
-
+#else
+		// fail
+#endif // ZSTDIO
 		break;
 	case MD_COMPRESS_ZLIB:
 
@@ -956,9 +959,14 @@ md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
         );
 		break;
 	case MD_COMPRESS_ZSTD:
+#ifdef ZSTDIO
+
 		ZSTD_decompress(
 			(void*) output, sc->sectorsize, (void*) sector->data, sector->size
         );
+#else
+		// fail
+#endif // ZSTDIO
 		break;
 	case MD_COMPRESS_ZLIB:
 		stream = sc->z_stream;
