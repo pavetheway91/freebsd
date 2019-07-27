@@ -57,6 +57,7 @@ CONFS=	DAEMON \
 	local \
 	localpkg \
 	lockd \
+	memorycompression \
 	mixer \
 	motd \
 	mountcritlocal \

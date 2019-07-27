@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# $FreeBSD$
+#
+
+# PROVIDE: memorycompression
+
+. /etc/rc.subr
+
+name="memorycompression"
+desc="Compress virtual memory"
+rcvar="memorycompression_enable"
+
+start_cmd="memorycompression_start"
+
+memorycompression_start()
+{
+
+}
+
+load_rc_config $name
+run_rc_command "$1"
