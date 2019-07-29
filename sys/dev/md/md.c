@@ -654,224 +654,10 @@ md_malloc_move_vlist(bus_dma_segment_t **pvlist, int *pma_offs,
 	return (0);
 }
 
-static int
-mdstart_malloc(struct md_s *sc, struct bio *bp)
-{
-	u_char *dst;
-	vm_page_t *m;
-	bus_dma_segment_t *vlist;
-	int i, error, error1, ma_offs, notmapped;
-	off_t secno, nsec, uc;
-	uintptr_t sp, osp;
 
-	switch (bp->bio_cmd) {
-	case BIO_READ:
-	case BIO_WRITE:
-	case BIO_DELETE:
-		break;
-	default:
-		return (EOPNOTSUPP);
-	}
-
-	notmapped = (bp->bio_flags & BIO_UNMAPPED) != 0;
-	vlist = (bp->bio_flags & BIO_VLIST) != 0 ?
-	    (bus_dma_segment_t *)bp->bio_data : NULL;
-	if (notmapped) {
-		m = bp->bio_ma;
-		ma_offs = bp->bio_ma_offset;
-		dst = NULL;
-		KASSERT(vlist == NULL, ("vlists cannot be unmapped"));
-	} else if (vlist != NULL) {
-		ma_offs = bp->bio_ma_offset;
-		dst = NULL;
-	} else {
-		dst = bp->bio_data;
-	}
-
-	nsec = bp->bio_length / sc->sectorsize;
-	secno = bp->bio_offset / sc->sectorsize;
-	error = 0;
-	while (nsec--) {
-		osp = s_read(sc->indir, secno);
-		if (bp->bio_cmd == BIO_DELETE) {
-			if (osp != 0)
-				error = s_write(sc->indir, secno, 0);
-		} else if (bp->bio_cmd == BIO_READ) {
-			if (osp == 0) {
-				if (notmapped) {
-					error = md_malloc_move_ma(&m, &ma_offs,
-					    sc->sectorsize, NULL, 0,
-					    MD_MALLOC_MOVE_ZERO);
-				} else if (vlist != NULL) {
-					error = md_malloc_move_vlist(&vlist,
-					    &ma_offs, sc->sectorsize, NULL, 0,
-					    MD_MALLOC_MOVE_ZERO);
-				} else
-					bzero(dst, sc->sectorsize);
-			} else if (osp <= 255) {
-				if (notmapped) {
-					error = md_malloc_move_ma(&m, &ma_offs,
-					    sc->sectorsize, NULL, osp,
-					    MD_MALLOC_MOVE_FILL);
-				} else if (vlist != NULL) {
-					error = md_malloc_move_vlist(&vlist,
-					    &ma_offs, sc->sectorsize, NULL, osp,
-					    MD_MALLOC_MOVE_FILL);
-				} else
-					memset(dst, osp, sc->sectorsize);
-			} else {
-				if (notmapped) {
-					error = md_malloc_move_ma(&m, &ma_offs,
-					    sc->sectorsize, (void *)osp, 0,
-					    MD_MALLOC_MOVE_READ);
-				} else if (vlist != NULL) {
-					error = md_malloc_move_vlist(&vlist,
-					    &ma_offs, sc->sectorsize,
-					    (void *)osp, 0,
-					    MD_MALLOC_MOVE_READ);
-				} else {
-					bcopy((void *)osp, dst, sc->sectorsize);
-					cpu_flush_dcache(dst, sc->sectorsize);
-				}
-			}
-			osp = 0;
-		} else if (bp->bio_cmd == BIO_WRITE) {
-			if (sc->flags & MD_COMPRESS) {
-				if (notmapped) {
-					error1 = md_malloc_move_ma(&m, &ma_offs,
-					    sc->sectorsize, &uc, 0,
-					    MD_MALLOC_MOVE_CMP);
-					i = error1 == 0 ? sc->sectorsize : 0;
-				} else if (vlist != NULL) {
-					error1 = md_malloc_move_vlist(&vlist,
-					    &ma_offs, sc->sectorsize, &uc, 0,
-					    MD_MALLOC_MOVE_CMP);
-					i = error1 == 0 ? sc->sectorsize : 0;
-				} else {
-					uc = dst[0];
-					for (i = 1; i < sc->sectorsize; i++) {
-						if (dst[i] != uc)
-							break;
-					}
-				}
-			} else {
-				i = 0;
-				uc = 0;
-			}
-			if (i == sc->sectorsize) {
-				if (osp != uc)
-					error = s_write(sc->indir, secno, uc);
-			} else {
-				if (osp <= 255) {
-					sp = (uintptr_t)uma_zalloc(sc->uma,
-					    md_malloc_wait ? M_WAITOK :
-					    M_NOWAIT);
-					if (sp == 0) {
-						error = ENOSPC;
-						break;
-					}
-					if (notmapped) {
-						error = md_malloc_move_ma(&m,
-						    &ma_offs, sc->sectorsize,
-						    (void *)sp, 0,
-						    MD_MALLOC_MOVE_WRITE);
-					} else if (vlist != NULL) {
-						error = md_malloc_move_vlist(
-						    &vlist, &ma_offs,
-						    sc->sectorsize, (void *)sp,
-						    0, MD_MALLOC_MOVE_WRITE);
-					} else {
-						bcopy(dst, (void *)sp,
-						    sc->sectorsize);
-					}
-					error = s_write(sc->indir, secno, sp);
-				} else {
-					if (notmapped) {
-						error = md_malloc_move_ma(&m,
-						    &ma_offs, sc->sectorsize,
-						    (void *)osp, 0,
-						    MD_MALLOC_MOVE_WRITE);
-					} else if (vlist != NULL) {
-						error = md_malloc_move_vlist(
-						    &vlist, &ma_offs,
-						    sc->sectorsize, (void *)osp,
-						    0, MD_MALLOC_MOVE_WRITE);
-					} else {
-						bcopy(dst, (void *)osp,
-						    sc->sectorsize);
-					}
-					osp = 0;
-				}
-			}
-		} else {
-			error = EOPNOTSUPP;
-		}
-		if (osp > 255)
-			uma_zfree(sc->uma, (void*)osp);
-		if (error != 0)
-			break;
-		secno++;
-		if (!notmapped && vlist == NULL)
-			dst += sc->sectorsize;
-	}
-	bp->bio_resid = 0;
-	return (error);
-}
-
-
-static void *
-md_gz_alloc(void *arg __unused, u_int n, u_int sz)
-{
-	return (malloc(n * sz, M_MD, M_WAITOK | M_ZERO));
-}
-
-static void
-md_gz_free(void *arg __unused, void *ptr)
-{
-	free(ptr, M_MD);
-}
-
-static int
-mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
-{
-	int error;
-	struct z_stream_s *stream;
-
-	error = 0;
-	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
-		return (EINVAL);
-	if (mdr->md_sectorsize != 0 && !powerof2(mdr->md_sectorsize))
-		return (EINVAL);
-
-	if (mdr->md_options & MD_RESERVE)
-		mdr->md_options &= ~MD_COMPRESS;
-	if (mdr->md_fwsectors != 0)
-		sc->fwsectors = mdr->md_fwsectors;
-	if (mdr->md_fwheads != 0)
-		sc->fwheads = mdr->md_fwheads;
-
-	stream = malloc(sizeof *stream, M_MD, M_WAITOK | M_ZERO);
-	stream->zalloc = md_gz_alloc;
-	stream->zfree = md_gz_free;
-	stream->opaque = Z_NULL;
-	sc->z_stream = stream;
-
-	sc->algo = MD_COMPRESS_ZSTD;
-
-	sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
-	sc->usedsectors = sc->written = 0;
-
-	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
-	sc->indir = dimension(sc->mediasize / sc->sectorsize);
-	sc->uma = uma_zcreate(sc->name, sc->sectorsize, NULL, NULL, NULL, NULL,
-	    0x1ff, 0);
-	if (mdr->md_options & MD_RESERVE) {
-		return (EINVAL);
-	}
-	printf("mdcreate code %d\n", error);
-	return (error);
-}
-
+/**
+ * compression api
+ */
 struct sector {
 	uintptr_t	*data;
 	u_int		size;
@@ -999,6 +785,262 @@ md_erase_sector(struct sector *sector)
 	free(sector->data, M_MD);
 	sector->size = 0;
 }
+
+static int
+mdstart_malloc(struct md_s *sc, struct bio *bp)
+{
+	u_char *dst;
+	vm_page_t *m;
+	bus_dma_segment_t *vlist;
+	int i, error, /*error1,*/ ma_offs, notmapped;
+	off_t secno, nsec, uc;
+	uintptr_t sp, osp;//, sector;
+	bool is_compressed = (sc->flags & MD_COMPRESS) != 0;
+
+	switch (bp->bio_cmd) {
+	case BIO_READ:
+	case BIO_WRITE:
+	case BIO_DELETE:
+		break;
+	default:
+		return (EOPNOTSUPP);
+	}
+
+	notmapped = (bp->bio_flags & BIO_UNMAPPED) != 0;
+	vlist = (bp->bio_flags & BIO_VLIST) != 0 ?
+	    (bus_dma_segment_t *)bp->bio_data : NULL;
+	if (notmapped) {
+		m = bp->bio_ma;
+		ma_offs = bp->bio_ma_offset;
+		dst = NULL;
+		KASSERT(vlist == NULL, ("vlists cannot be unmapped"));
+	} else if (vlist != NULL) {
+		ma_offs = bp->bio_ma_offset;
+		dst = NULL;
+	} else {
+		dst = bp->bio_data;
+	}
+
+	nsec = bp->bio_length / sc->sectorsize;
+	secno = bp->bio_offset / sc->sectorsize;
+	error = 0;
+	while (nsec--) {
+		osp = s_read(sc->indir, secno);
+		if (bp->bio_cmd == BIO_DELETE) {
+			if (is_compressed && osp != 0)
+			{
+				sc->usedsectors--;
+				md_erase_sector((struct sector*) osp);
+				free((struct sector*) osp, M_MD);
+			}
+			else if (osp != 0)
+			{
+				error = s_write(sc->indir, secno, 0);
+			}
+		} else if (bp->bio_cmd == BIO_READ) {
+			if (osp == 0) {
+				if (notmapped) {
+					error = md_malloc_move_ma(&m, &ma_offs,
+					    sc->sectorsize, NULL, 0,
+					    MD_MALLOC_MOVE_ZERO);
+				} else if (vlist != NULL) {
+					error = md_malloc_move_vlist(&vlist,
+					    &ma_offs, sc->sectorsize, NULL, 0,
+					    MD_MALLOC_MOVE_ZERO);
+				} else
+					bzero(dst, sc->sectorsize);
+			} else if (osp <= 255) {
+				if (notmapped) {
+					error = md_malloc_move_ma(&m, &ma_offs,
+					    sc->sectorsize, NULL, osp,
+					    MD_MALLOC_MOVE_FILL);
+				} else if (vlist != NULL) {
+					error = md_malloc_move_vlist(&vlist,
+					    &ma_offs, sc->sectorsize, NULL, osp,
+					    MD_MALLOC_MOVE_FILL);
+				} else {
+					memset(dst, osp, sc->sectorsize);
+				}
+			} else {
+				if (notmapped) {
+					error = md_malloc_move_ma(&m, &ma_offs,
+					    sc->sectorsize, (void *)osp, 0,
+					    MD_MALLOC_MOVE_READ);
+				} else if (vlist != NULL) {
+					error = md_malloc_move_vlist(&vlist,
+					    &ma_offs, sc->sectorsize,
+					    (void *)osp, 0,
+					    MD_MALLOC_MOVE_READ);
+				} else {
+					if (is_compressed)
+					{
+						md_uncompress(sc, (struct sector*) osp, dst);
+					}
+					else
+					{
+						bcopy((void *)osp, dst, sc->sectorsize);
+						cpu_flush_dcache(dst, sc->sectorsize);
+					}
+				}
+			}
+			osp = 0;
+		} else if (bp->bio_cmd == BIO_WRITE) {
+			if (is_compressed) {
+				/*
+				if (notmapped) {
+					error1 = md_malloc_move_ma(&m, &ma_offs,
+					    sc->sectorsize, &uc, 0,
+					    MD_MALLOC_MOVE_CMP);
+					i = error1 == 0 ? sc->sectorsize : 0;
+				} else if (vlist != NULL) {
+					error1 = md_malloc_move_vlist(&vlist,
+					    &ma_offs, sc->sectorsize, &uc, 0,
+					    MD_MALLOC_MOVE_CMP);
+					i = error1 == 0 ? sc->sectorsize : 0;
+				} else {
+					uc = dst[0];
+					for (i = 1; i < sc->sectorsize; i++) {
+						if (dst[i] != uc)
+							break;
+					}
+				}
+				*/
+			} else {
+				i = 0;
+				uc = 0;
+			}
+			if (i == sc->sectorsize) {
+				if (osp != uc)
+					error = s_write(sc->indir, secno, uc);
+			} else {
+				if (osp <= 255) {
+					if (is_compressed)
+					{
+						sp = (uintptr_t) malloc(sizeof(struct sector), M_MD, M_WAITOK | M_ZERO);
+						md_compress(sc, (struct sector*) sp, dst);
+						sc->usedsectors++;
+						error = s_write(sc->indir, secno, sp);
+					}
+					else
+					{
+						sp = (uintptr_t)uma_zalloc(sc->uma,
+							md_malloc_wait ? M_WAITOK :
+							M_NOWAIT);
+						if (sp == 0) {
+							error = ENOSPC;
+							break;
+						}
+						if (notmapped) {
+							error = md_malloc_move_ma(&m,
+								&ma_offs, sc->sectorsize,
+								(void *)sp, 0,
+								MD_MALLOC_MOVE_WRITE);
+						} else if (vlist != NULL) {
+							error = md_malloc_move_vlist(
+								&vlist, &ma_offs,
+								sc->sectorsize, (void *)sp,
+								0, MD_MALLOC_MOVE_WRITE);
+						} else {
+							bcopy(dst, (void *)sp,
+								sc->sectorsize);
+						}
+						error = s_write(sc->indir, secno, sp);
+					}
+				} else {
+					if (is_compressed)
+					{
+						md_compress(sc, (struct sector*) osp, dst);
+						osp = 0;
+					}
+					else
+					{
+						if (notmapped) {
+							error = md_malloc_move_ma(&m,
+								&ma_offs, sc->sectorsize,
+								(void *)osp, 0,
+								MD_MALLOC_MOVE_WRITE);
+						} else if (vlist != NULL) {
+							error = md_malloc_move_vlist(
+								&vlist, &ma_offs,
+								sc->sectorsize, (void *)osp,
+								0, MD_MALLOC_MOVE_WRITE);
+						} else {
+							bcopy(dst, (void *)osp,
+								sc->sectorsize);
+						}
+						osp = 0;
+					}
+				}
+			}
+		} else {
+			error = EOPNOTSUPP;
+		}
+		if (osp > 255 && !is_compressed)
+			uma_zfree(sc->uma, (void*)osp);
+		if (error != 0)
+			break;
+		secno++;
+		if (!notmapped && vlist == NULL)
+			dst += sc->sectorsize;
+	}
+	bp->bio_resid = 0;
+	return (error);
+}
+
+
+static void *
+md_gz_alloc(void *arg __unused, u_int n, u_int sz)
+{
+	return (malloc(n * sz, M_MD, M_WAITOK | M_ZERO));
+}
+
+static void
+md_gz_free(void *arg __unused, void *ptr)
+{
+	free(ptr, M_MD);
+}
+
+static int
+mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
+{
+	int error;
+	struct z_stream_s *stream;
+
+	error = 0;
+	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
+		return (EINVAL);
+	if (mdr->md_sectorsize != 0 && !powerof2(mdr->md_sectorsize))
+		return (EINVAL);
+
+	if (mdr->md_options & MD_RESERVE)
+		mdr->md_options &= ~MD_COMPRESS;
+	if (mdr->md_fwsectors != 0)
+		sc->fwsectors = mdr->md_fwsectors;
+	if (mdr->md_fwheads != 0)
+		sc->fwheads = mdr->md_fwheads;
+
+	stream = malloc(sizeof *stream, M_MD, M_WAITOK | M_ZERO);
+	stream->zalloc = md_gz_alloc;
+	stream->zfree = md_gz_free;
+	stream->opaque = Z_NULL;
+	sc->z_stream = stream;
+
+	sc->algo = MD_COMPRESS_ZLIB;
+
+	sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
+	sc->usedsectors = sc->written = 0;
+
+	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
+	sc->indir = dimension(sc->mediasize / sc->sectorsize);
+	sc->uma = uma_zcreate(sc->name, sc->sectorsize, NULL, NULL, NULL, NULL,
+	    0x1ff, 0);
+	if (mdr->md_options & MD_RESERVE) {
+		return (EINVAL);
+	}
+	printf("mdcreate code %d\n", error);
+	return (error);
+}
+
 
 static int
 mdstart_compressed(struct md_s *sc, struct bio *bp)
@@ -1748,6 +1790,7 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 	uintptr_t sp;
 	int error;
 	off_t u;
+	struct z_stream_s *stream;
 
 	error = 0;
 	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
@@ -1765,6 +1808,23 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 	sc->indir = dimension(sc->mediasize / sc->sectorsize);
 	sc->uma = uma_zcreate(sc->name, sc->sectorsize, NULL, NULL, NULL, NULL,
 	    0x1ff, 0);
+
+    if ((mdr->md_options & MD_COMPRESS) != 0)
+	{
+		printf("compressed %d\n", error);
+
+		stream = malloc(sizeof *stream, M_MD, M_WAITOK | M_ZERO);
+		stream->zalloc = md_gz_alloc;
+		stream->zfree = md_gz_free;
+		stream->opaque = Z_NULL;
+		sc->z_stream = stream;
+
+		sc->algo = MD_COMPRESS_ZSTD;
+
+		sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
+		sc->usedsectors = sc->written = 0;
+	}
+
 	if (mdr->md_options & MD_RESERVE) {
 		off_t nsectors;
 
