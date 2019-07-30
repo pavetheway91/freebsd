@@ -916,6 +916,16 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 				if (osp <= 255) {
 					if (is_compressed)
 					{
+						if (sc->compr_buf == NULL)
+						{
+							printf("null compr buf %d\n", 0);
+							return (1);
+						}
+						if (dst == NULL)
+						{
+							printf("null compr dst %d\n", 0);
+							return (1);
+						}
 						sp = (uintptr_t) malloc(sizeof(struct sector), M_MD, M_WAITOK | M_ZERO);
 						md_compress(sc, (struct sector*) sp, dst);
 						sc->usedsectors++;
