@@ -806,6 +806,17 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 		return (EOPNOTSUPP);
 	}
 
+	if ((bp->bio_flags & BIO_UNMAPPED) != 0)
+	{
+		printf("BIO_UNMAPPED is not yet supported");
+		return (EOPNOTSUPP);
+	}
+	if ((bp->bio_flags & BIO_VLIST) != 0)
+	{
+		printf("BIO_VLIST is not yet supported");
+		return (EOPNOTSUPP);
+	}
+
 	notmapped = (bp->bio_flags & BIO_UNMAPPED) != 0;
 	vlist = (bp->bio_flags & BIO_VLIST) != 0 ?
 	    (bus_dma_segment_t *)bp->bio_data : NULL;
