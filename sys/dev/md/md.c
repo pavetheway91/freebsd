@@ -1790,7 +1790,7 @@ mdinit(struct md_s *sc)
 	case MD_MALLOC:
 	case MD_VNODE:
 	case MD_SWAP:
-		pp->flags |= G_PF_ACCEPT_UNMAPPED;
+//		pp->flags |= G_PF_ACCEPT_UNMAPPED;
 		break;
 	case MD_COMPRESSED:
 	case MD_PRELOAD:
