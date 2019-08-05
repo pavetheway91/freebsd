@@ -115,7 +115,7 @@ main(int argc, char **argv)
 	if (argc == 1)
 		usage();
 
-	while ((ch = getopt(argc, argv, "ab:df:lno:rs:S:t:u:vx:y:L:")) != -1) {
+	while ((ch = getopt(argc, argv, "ab:df:lno:rs:S:t:z:u:vx:y:L:")) != -1) {
 		switch (ch) {
 		case 'a':
 			if (action != UNSET && action != ATTACH)
@@ -261,6 +261,20 @@ main(int argc, char **argv)
 			break;
 		case 'L':
 			strlcpy(mdio.md_label, optarg, PATH_MAX);
+			break;
+		case 'z':
+			if (!strcmp(optarg, "lz4"))
+			{
+				mdio.compression_algo = MD_COMPRESS_LZ4;
+			}
+			else if (!strcmp(optarg, "zstd"))
+			{
+				mdio.compression_algo = MD_COMPRESS_ZSTD;
+			}
+			else if (!strcmp(optarg, "zlib"))
+			{
+				mdio.compression_algo = MD_COMPRESS_ZLIB;
+			}
 			break;
 		default:
 			usage();

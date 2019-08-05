@@ -47,6 +47,8 @@
 
 enum md_types {MD_MALLOC, MD_COMPRESSED, MD_PRELOAD, MD_VNODE, MD_SWAP, MD_NULL};
 
+enum md_compression_algos {MD_COMPRESS_LZ4, MD_COMPRESS_ZSTD, MD_COMPRESS_ZLIB};
+
 /*
  * Ioctl definitions for memory disk pseudo-device.
  */
@@ -65,6 +67,8 @@ struct md_ioctl {
 	int		md_fwsectors;	/* firmware sectors */
 	char		*md_label;	/* label of the device */
 	int		md_pad[MDNPAD];	/* storage for MDIOCLIST */
+	int		compression_level;
+	enum md_compression_algos	compression_algo ;	/* type of disk */
 };
 
 #define MD_NAME		"md"
