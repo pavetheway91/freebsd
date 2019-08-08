@@ -134,6 +134,8 @@ struct md_req {
 	char		*md_label;	/* label of the device (userspace) */
 	int		*md_units;	/* pointer to units array (kernel) */
 	size_t		md_units_nitems; /* items in md_units array */
+	int		compression_level;
+	enum md_compression_algos	compression_algo ;	/* type of disk */
 };
 
 #ifdef COMPAT_FREEBSD32
@@ -150,8 +152,10 @@ struct md_ioctl32 {
 	int		md_fwsectors;
 	uint32_t	md_label;
 	int		md_pad[MDNPAD];
+	int		compression_level;
+	enum md_compression_algos	compression_algo ;	/* type of disk */
 } __attribute__((__packed__));
-CTASSERT((sizeof(struct md_ioctl32)) == 436);
+//CTASSERT((sizeof(struct md_ioctl32)) == 436);
 
 #define	MDIOCATTACH_32	_IOC_NEWTYPE(MDIOCATTACH, struct md_ioctl32)
 #define	MDIOCDETACH_32	_IOC_NEWTYPE(MDIOCDETACH, struct md_ioctl32)
@@ -241,8 +245,6 @@ static int nshift;
 
 static uma_zone_t md_pbuf_zone;
 
-enum compression_algos {MD_COMPRESS_LZ4, MD_COMPRESS_ZSTD, MD_COMPRESS_ZLIB, MD_COMPRESS_NONE};
-
 struct indir {
 	uintptr_t	*array;
 	u_int		total;
@@ -278,14 +280,16 @@ struct md_s {
 
 	union {
 		// lz4 stream
-		// zstd strem
-		struct z_stream_s *z_stream;
+		// zstd stream
+		struct z_stream_s *zlib_stream;
 	};
 	int algo;
 	uintptr_t	*compr_buf;
 	unsigned	compr_buf_size;
- 	unsigned	usedsectors;
- 	unsigned	written;
+ 	long	usedsectors;
+ 	long	used;
+	long	logicalused;
+	struct sysctl_ctx_list sysctl_tree;
 
 	/* MD_PRELOAD related fields */
 	u_char *pl_ptr;
@@ -700,7 +704,7 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 		break;
 	case MD_COMPRESS_ZLIB:
 
-		stream = sc->z_stream;
+		stream = sc->zlib_stream;
 
 		stream->avail_in = sc->sectorsize;
 		stream->next_in = (Bytef *)input;
@@ -755,7 +759,7 @@ md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
 #endif // ZSTDIO
 		break;
 	case MD_COMPRESS_ZLIB:
-		stream = sc->z_stream;
+		stream = sc->zlib_stream;
 
 		stream->avail_in = sc->sectorsize;
 		stream->next_in = (Bytef *)sector->data;
@@ -803,17 +807,6 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 	case BIO_DELETE:
 		break;
 	default:
-		return (EOPNOTSUPP);
-	}
-
-	if ((bp->bio_flags & BIO_UNMAPPED) != 0)
-	{
-		printf("BIO_UNMAPPED is not yet supported");
-		return (EOPNOTSUPP);
-	}
-	if ((bp->bio_flags & BIO_VLIST) != 0)
-	{
-		printf("BIO_VLIST is not yet supported");
 		return (EOPNOTSUPP);
 	}
 
@@ -927,16 +920,6 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 				if (osp <= 255) {
 					if (is_compressed)
 					{
-						if (sc->compr_buf == NULL)
-						{
-							printf("null compr buf %d\n", 0);
-							return (1);
-						}
-						if (dst == NULL)
-						{
-							printf("null compr dst %d\n", 0);
-							return (1);
-						}
 						sp = (uintptr_t) malloc(sizeof(struct sector), M_MD, M_WAITOK | M_ZERO);
 						md_compress(sc, (struct sector*) sp, dst);
 						sc->usedsectors++;
@@ -1019,246 +1002,6 @@ static void
 md_gz_free(void *arg __unused, void *ptr)
 {
 	free(ptr, M_MD);
-}
-
-static int
-mdcreate_compressed(struct md_s *sc, struct md_req *mdr)
-{
-	int error;
-	struct z_stream_s *stream;
-
-	error = 0;
-	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
-		return (EINVAL);
-	if (mdr->md_sectorsize != 0 && !powerof2(mdr->md_sectorsize))
-		return (EINVAL);
-
-	if (mdr->md_options & MD_RESERVE)
-		mdr->md_options &= ~MD_COMPRESS;
-	if (mdr->md_fwsectors != 0)
-		sc->fwsectors = mdr->md_fwsectors;
-	if (mdr->md_fwheads != 0)
-		sc->fwheads = mdr->md_fwheads;
-
-	stream = malloc(sizeof *stream, M_MD, M_WAITOK | M_ZERO);
-	stream->zalloc = md_gz_alloc;
-	stream->zfree = md_gz_free;
-	stream->opaque = Z_NULL;
-	sc->z_stream = stream;
-
-	sc->algo = MD_COMPRESS_ZLIB;
-
-	sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
-	sc->usedsectors = sc->written = 0;
-
-	sc->flags = mdr->md_options & (MD_COMPRESS | MD_FORCE);
-	sc->indir = dimension(sc->mediasize / sc->sectorsize);
-	sc->uma = uma_zcreate(sc->name, sc->sectorsize, NULL, NULL, NULL, NULL,
-	    0x1ff, 0);
-	if (mdr->md_options & MD_RESERVE) {
-		return (EINVAL);
-	}
-	printf("mdcreate code %d\n", error);
-	return (error);
-}
-
-
-static int
-mdstart_compressed(struct md_s *sc, struct bio *bp)
-{
-	u_char *dst;
-	int retval;
-	off_t secno, nsec;
-	uintptr_t sector;
-
-	if ((bp->bio_flags & BIO_UNMAPPED) != 0)
-	{
-		printf("BIO_UNMAPPED is not yet supported");
-		return (EOPNOTSUPP);
-	}
-	if ((bp->bio_flags & BIO_VLIST) != 0)
-	{
-		printf("BIO_VLIST is not yet supported");
-		return (EOPNOTSUPP);
-	}
-
-	dst = bp->bio_data;
-	nsec = bp->bio_length / sc->sectorsize;
-	secno = bp->bio_offset / sc->sectorsize;
-	retval = 0;
-
-	while (nsec--) {
-		sector = s_read(sc->indir, secno);
-		switch(bp->bio_cmd)
-		{
-		case BIO_DELETE:
-			if (sector != 0)
-				retval = s_write(sc->indir, secno, 0);
-				sc->usedsectors--;
-				md_erase_sector((struct sector*) sector);
-				free((struct sector*) sector, M_MD);
-				//sc->written = sc->written - ((struct sector*) sector)->size;
-			break;
-		case BIO_READ:
-			if (sector == 0) {
-				bzero(dst, sc->sectorsize);
-			} else {
-				md_uncompress(sc, (struct sector*) sector, dst);
-			}
-			sector = 0;
-			break;
-		case BIO_WRITE:
-			if (sector <= 255) {
-				sector = (uintptr_t) malloc(sizeof(struct sector), M_MD, M_WAITOK | M_ZERO);
-				md_compress(sc, (struct sector*) sector, dst);
-				sc->usedsectors++;
-				retval = s_write(sc->indir, secno, sector);
-			} else {
-				md_compress(sc, (struct sector*) sector, dst);
-				//sc->written = sc->written - ((struct sector*) sector)->size;
-				sector = 0;
-			}
-			//sc->written = sc->written + ((struct sector*) sector)->size;
-			break;
-		default:
-			return (EOPNOTSUPP);
-		}
-		if (sector > 255)
-			//md_erase_sector((struct sector*) sector);
-			//free((struct sector*) sector, M_MD);
-		if (retval != 0)
-			break;
-		secno++;
-		dst += sc->sectorsize;
-	}
-	bp->bio_resid = 0;
-
-	return retval;
-}
-
-
-static int
-mdstart_compressed_old(struct md_s *sc, struct bio *bp)
-{
-	u_char *dst;
-	int retval, z_status;
-	off_t secno, nsec;//, uc;
-	uintptr_t read_ptr, write_buf;
-	struct z_stream_s *stream;
-
-	if ((bp->bio_flags & BIO_UNMAPPED) != 0)
-	{
-		printf("BIO_UNMAPPED is not yet supported");
-		return (EOPNOTSUPP);
-	}
-	if ((bp->bio_flags & BIO_VLIST) != 0)
-	{
-		printf("BIO_VLIST is not yet supported");
-		return (EOPNOTSUPP);
-	}
-
-	dst = bp->bio_data;
-	nsec = bp->bio_length / sc->sectorsize;
-	secno = bp->bio_offset / sc->sectorsize;
-	stream = sc->z_stream;
-
-	//printf("nsec %jd, secno %jd, secsize %d\n", nsec, secno, sc->sectorsize);
-
-	retval = 0;
-	while (nsec--) {
-		read_ptr = s_read(sc->indir, secno);
-		switch(bp->bio_cmd)
-		{
-		case BIO_DELETE:
-			if (read_ptr != 0)
-				retval = s_write(sc->indir, secno, 0);
-			break;
-		case BIO_READ:
-			if (read_ptr == 0) {
-				bzero(dst, sc->sectorsize);
-			} else {
-				stream->avail_in = (uInt)sc->sectorsize;
-				stream->next_in = (Bytef *)read_ptr;
-				stream->avail_out = (uInt)sc->sectorsize;
-				stream->next_out = (Bytef *)dst;
-
-				inflateInit(stream);
-				z_status = inflate(stream, Z_FINISH);
-				if (z_status != Z_OK && z_status != Z_STREAM_END)
-				{
-					printf("inflate error: %s\n", stream->msg);
-					return z_status;
-				}
-				inflateEnd(stream);
-/*
-				if (read_ptr <= 255) {
-					memset(dst, read_ptr, sc->sectorsize);
-				} else {
-					bcopy((void *)read_ptr, dst, sc->sectorsize);
-					cpu_flush_dcache(dst, sc->sectorsize);
-				}*/
-			}
-			read_ptr = 0;
-			break;
-		case BIO_WRITE:
-			if (read_ptr <= 255) {
-				write_buf = (uintptr_t)uma_zalloc(sc->uma, md_malloc_wait ? M_WAITOK : M_NOWAIT);
-
-				if (write_buf == 0)
-				{
-					retval = ENOSPC;
-					break;
-				}
-
-				stream->avail_in = (uInt)sc->sectorsize;
-				stream->next_in = (Bytef *)dst;
-				stream->avail_out = (uInt)sc->sectorsize;
-				stream->next_out = (Bytef *)write_buf;
-
-				deflateInit(stream, (int)6);
-				z_status = deflate(stream, Z_FINISH);
-				if (z_status != Z_OK && z_status != Z_STREAM_END)
-				{
-					printf("deflate error: %s\n", stream->msg);
-					return z_status;
-				}
-				deflateEnd(stream);
-
-				//bcopy(dst, (void *)write_buf, sc->sectorsize);
-				retval = s_write(sc->indir, secno, write_buf);
-			} else {
-
-				stream->avail_in = (uInt)sc->sectorsize;
-				stream->next_in = (Bytef *)dst;
-				stream->avail_out = (uInt)sc->sectorsize;
-				stream->next_out = (Bytef *)read_ptr;
-
-				deflateInit(stream, (int)6);
-				z_status = deflate(stream, Z_FINISH);
-				if (z_status != Z_OK && z_status != Z_STREAM_END)
-				{
-					printf("deflate error: %s\n", stream->msg);
-					return z_status;
-				}
-				deflateEnd(stream);
-
-				//bcopy(sc->compr_buf, (void *)read_ptr, sc->sectorsize);
-				read_ptr = 0;
-			}
-			break;
-		default:
-			return (EOPNOTSUPP);
-		}
-		if (read_ptr > 255)
-			uma_zfree(sc->uma, (void*)read_ptr);
-		if (retval != 0)
-			break;
-		secno++;
-		dst += sc->sectorsize;
-	}
-	bp->bio_resid = 0;
-
-	return retval;
 }
 
 static void
@@ -1792,7 +1535,6 @@ mdinit(struct md_s *sc)
 	case MD_SWAP:
 //		pp->flags |= G_PF_ACCEPT_UNMAPPED;
 		break;
-	case MD_COMPRESSED:
 	case MD_PRELOAD:
 	case MD_NULL:
 		break;
@@ -1805,15 +1547,22 @@ mdinit(struct md_s *sc)
 	    DEVSTAT_ALL_SUPPORTED, DEVSTAT_TYPE_DIRECT, DEVSTAT_PRIORITY_MAX);
 }
 
+SYSCTL_NODE(_debug, OID_AUTO, md, CTLFLAG_RD, 0, "md(4) statistics");
+
 static int
 mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 {
 	uintptr_t sp;
-	int error;
+	int error, algonamelen;
 	off_t u;
-	struct z_stream_s *stream;
+	struct sysctl_oid *oid;
+	char sysctlunit[10];
+	char *algoname;
+
+	struct z_stream_s *zlib_stream;
 
 	error = 0;
+
 	if (mdr->md_options & ~(MD_AUTOUNIT | MD_COMPRESS | MD_RESERVE))
 		return (EINVAL);
 	if (mdr->md_sectorsize != 0 && !powerof2(mdr->md_sectorsize))
@@ -1832,18 +1581,46 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 
     if ((mdr->md_options & MD_COMPRESS) != 0)
 	{
-		printf("compressed %d\n", error);
+		switch(mdr->compression_algo)
+		{
+			case MD_COMPRESS_ZSTD:
+				algoname = "zstd";
+				algonamelen = 4;
+				sc->algo = MD_COMPRESS_ZSTD;
 
-		stream = malloc(sizeof *stream, M_MD, M_WAITOK | M_ZERO);
-		stream->zalloc = md_gz_alloc;
-		stream->zfree = md_gz_free;
-		stream->opaque = Z_NULL;
-		sc->z_stream = stream;
-
-		sc->algo = MD_COMPRESS_ZSTD;
+				break;
+			case MD_COMPRESS_ZLIB:
+				algoname = "zlib";
+				algonamelen = 4;
+				sc->algo = MD_COMPRESS_ZLIB;
+				zlib_stream = malloc(sizeof *zlib_stream, M_MD, M_WAITOK | M_ZERO);
+				zlib_stream->zalloc = md_gz_alloc;
+				zlib_stream->zfree = md_gz_free;
+				zlib_stream->opaque = Z_NULL;
+				sc->zlib_stream = zlib_stream;
+				break;
+			case MD_COMPRESS_LZ4:
+			default:
+				printf("lz4?\n");
+				return 1;
+				break;
+		}
 
 		sc->compr_buf = malloc(sc->sectorsize * 2, M_MD, M_WAITOK | M_ZERO);
-		sc->usedsectors = sc->written = 0;
+		sc->usedsectors = sc->used = sc->logicalused = 0;
+
+		sprintf(sysctlunit, "%d", sc->unit);
+
+		sysctl_ctx_init(&sc->sysctl_tree);
+		oid = SYSCTL_ADD_NODE(&sc->sysctl_tree,
+			SYSCTL_STATIC_CHILDREN(_debug_md), OID_AUTO, sysctlunit, CTLFLAG_RD, 0,
+			"");
+		SYSCTL_ADD_LONG(&sc->sysctl_tree, SYSCTL_CHILDREN(oid), OID_AUTO,
+			"compressed", CTLFLAG_RD, &sc->used,
+			"Total bytes of compressed data");
+		SYSCTL_ADD_LONG(&sc->sysctl_tree, SYSCTL_CHILDREN(oid), OID_AUTO,
+			"uncompressed", CTLFLAG_RD, &sc->logicalused,
+			"Logical size of stored data");
 	}
 
 	if (mdr->md_options & MD_RESERVE) {
@@ -2168,7 +1945,6 @@ kern_mdattach_locked(struct thread *td, struct md_req *mdr)
 
 	switch (mdr->md_type) {
 	case MD_MALLOC:
-	case MD_COMPRESSED:
 	case MD_PRELOAD:
 	case MD_VNODE:
 	case MD_SWAP:
@@ -2206,10 +1982,6 @@ kern_mdattach_locked(struct thread *td, struct md_req *mdr)
 	case MD_MALLOC:
 		sc->start = mdstart_malloc;
 		error = mdcreate_malloc(sc, mdr);
-		break;
-	case MD_COMPRESSED:
-		sc->start = mdstart_compressed;
-		error = mdcreate_compressed(sc, mdr);
 		break;
 	case MD_PRELOAD:
 		/*
@@ -2449,6 +2221,8 @@ mdctlioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		if (mdio->md_version != MDIOVERSION)
 			return (EINVAL);
 		MD_IOCTL2REQ(mdio, &mdr);
+		mdr.compression_level = mdio->compression_level;
+		mdr.compression_algo = mdio->compression_algo;
 		mdr.md_file = mdio->md_file;
 		mdr.md_file_seg = UIO_USERSPACE;
 		/* If the file is adjacent to the md_ioctl it's in kernel. */
@@ -2652,7 +2426,6 @@ g_md_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 	case MD_NULL:
 		type = "null";
 		break;
-	case MD_COMPRESSED:
 		type = "compressed";
 		break;
 	default:
