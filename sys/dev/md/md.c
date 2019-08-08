@@ -1621,6 +1621,12 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 		SYSCTL_ADD_LONG(&sc->sysctl_tree, SYSCTL_CHILDREN(oid), OID_AUTO,
 			"uncompressed", CTLFLAG_RD, &sc->logicalused,
 			"Logical size of stored data");
+		SYSCTL_ADD_LONG(&sc->sysctl_tree, SYSCTL_CHILDREN(oid), OID_AUTO,
+			"usedsectors", CTLFLAG_RD, &sc->usedsectors,
+			"Number of used sectors");
+		SYSCTL_ADD_STRING(&sc->sysctl_tree, SYSCTL_CHILDREN(oid), OID_AUTO,
+			"algo", CTLFLAG_RD, algoname, algonamelen,
+			"Compression algorithm");
 	}
 
 	if (mdr->md_options & MD_RESERVE) {
