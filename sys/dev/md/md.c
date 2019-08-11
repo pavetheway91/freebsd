@@ -280,7 +280,7 @@ struct md_s {
 
 	union {
 		// lz4 stream
-		// zstd stream
+		struct ZSTD_CCtx* zstd_stream;
 		struct z_stream_s *zlib_stream;
 	};
 	int algo;
@@ -992,8 +992,6 @@ mdstart_malloc(struct md_s *sc, struct bio *bp)
 	return (error);
 }
 
-
-
 static void *
 md_gz_alloc(void *arg __unused, u_int n, u_int sz)
 {
@@ -1589,7 +1587,7 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 				algoname = "zstd";
 				algonamelen = 4;
 				sc->algo = MD_COMPRESS_ZSTD;
-
+				sc->zstd_stream = ZSTD_createCCtx();
 				break;
 			case MD_COMPRESS_ZLIB:
 				algoname = "zlib";
