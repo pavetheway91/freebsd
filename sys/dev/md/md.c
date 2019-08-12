@@ -280,7 +280,7 @@ struct md_s {
 
 	union {
 		// lz4 stream
-		struct ZSTD_CCtx* zstd_stream;
+		ZSTD_CCtx* zstd_stream;
 		struct z_stream_s *zlib_stream;
 	};
 	int algo;
