@@ -252,6 +252,12 @@ struct indir {
 	u_int		shift;
 };
 
+struct zstd_wrapper
+{
+	ZSTD_CCtx* compressor;
+	ZSTD_DCtx* uncompressor;
+};
+
 struct md_s {
 	int unit;
 	LIST_ENTRY(md_s) list;
@@ -280,7 +286,7 @@ struct md_s {
 
 	union {
 		// lz4 stream
-		ZSTD_CCtx* zstd_stream;
+		struct zstd_wrapper* zstd_stream;
 		struct z_stream_s *zlib_stream;
 	};
 	int algo;
@@ -689,9 +695,14 @@ md_compress(struct md_s *sc, struct sector *sector, u_char *input)
 		break;
 	case MD_COMPRESS_ZSTD:
 #ifdef ZSTDIO
-		sector->size = (int) ZSTD_compress(
-			(void*) sc->compr_buf, sc->sectorsize * 2, (void*) input, sc->sectorsize, 6
-		);
+		sector->size = ZSTD_compressCCtx(
+			sc->zstd_stream->compressor,
+            (void *)sc->compr_buf,
+			sc->sectorsize * 2,
+			(void*) input,
+			sc->sectorsize,
+			6
+        );
 		if (sector->data != NULL)
 		{
 			free(sector->data, M_MD);
@@ -750,10 +761,13 @@ md_uncompress(struct md_s *sc, struct sector *sector, u_char *output)
 		break;
 	case MD_COMPRESS_ZSTD:
 #ifdef ZSTDIO
-
-		ZSTD_decompress(
-			(void*) output, sc->sectorsize, (void*) sector->data, sector->size
-        );
+		ZSTD_decompressDCtx(
+			sc->zstd_stream->uncompressor,
+			(void *) output,
+			sc->sectorsize,
+			(void *) sector->data,
+			sector->size
+		);
 #else
 		// fail
 #endif // ZSTDIO
@@ -1560,6 +1574,7 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 	char *algoname;
 
 	struct z_stream_s *zlib_stream;
+	struct zstd_wrapper *zstd_wrapper;
 
 	error = 0;
 
@@ -1587,7 +1602,10 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 				algoname = "zstd";
 				algonamelen = 4;
 				sc->algo = MD_COMPRESS_ZSTD;
-				sc->zstd_stream = ZSTD_createCCtx();
+				zstd_wrapper = malloc(sizeof *zstd_wrapper, M_MD, (md_malloc_wait ? M_WAITOK : M_NOWAIT) | M_ZERO);
+				zstd_wrapper->compressor = ZSTD_createCCtx();
+				zstd_wrapper->uncompressor = ZSTD_createDCtx();
+				sc->zstd_stream = zstd_wrapper;
 				break;
 			case MD_COMPRESS_ZLIB:
 				algoname = "zlib";
