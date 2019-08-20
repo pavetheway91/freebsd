@@ -1598,14 +1598,9 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 	{
 		switch(mdr->compression_algo)
 		{
-			case MD_COMPRESS_ZSTD:
-				algoname = "zstd";
-				algonamelen = 4;
-				sc->algo = MD_COMPRESS_ZSTD;
-				zstd_wrapper = malloc(sizeof *zstd_wrapper, M_MD, (md_malloc_wait ? M_WAITOK : M_NOWAIT) | M_ZERO);
-				zstd_wrapper->compressor = ZSTD_createCCtx();
-				zstd_wrapper->uncompressor = ZSTD_createDCtx();
-				sc->zstd_stream = zstd_wrapper;
+			case MD_COMPRESS_LZ4:
+				printf("lz4 does not work yet\n");
+				return 1;
 				break;
 			case MD_COMPRESS_ZLIB:
 				algoname = "zlib";
@@ -1617,10 +1612,15 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 				zlib_stream->opaque = Z_NULL;
 				sc->zlib_stream = zlib_stream;
 				break;
-			case MD_COMPRESS_LZ4:
+			case MD_COMPRESS_ZSTD:
 			default:
-				printf("lz4?\n");
-				return 1;
+				algoname = "zstd";
+				algonamelen = 4;
+				sc->algo = MD_COMPRESS_ZSTD;
+				zstd_wrapper = malloc(sizeof *zstd_wrapper, M_MD, (md_malloc_wait ? M_WAITOK : M_NOWAIT) | M_ZERO);
+				zstd_wrapper->compressor = ZSTD_createCCtx();
+				zstd_wrapper->uncompressor = ZSTD_createDCtx();
+				sc->zstd_stream = zstd_wrapper;
 				break;
 		}
 
